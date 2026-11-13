@@ -1,0 +1,1653 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>نمایشگر KMZ و زیرساخت | OpenInfraMap</title>
+
+  <!-- MapLibre GL JS stylesheet (external dependency) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@6.18.0/dist/maplibre-gl.css">
+
+  <style>
+    :root {
+      --bg: #f3f6fa;
+      --surface: #ffffff;
+      --surface-soft: #f7f9fc;
+      --text: #172235;
+      --muted: #64748b;
+      --line: #e3e9f1;
+      --primary: #1769aa;
+      --primary-dark: #105487;
+      --primary-soft: #eaf4fc;
+      --success: #15803d;
+      --success-bg: #ecfdf3;
+      --danger: #b42318;
+      --danger-bg: #fff1f0;
+      --warning: #a15c07;
+      --warning-bg: #fff8e8;
+      --shadow: 0 12px 36px rgba(23, 34, 53, .08);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Tahoma, "Segoe UI", Arial, sans-serif;
+      font-size: 13px;
+    }
+
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, label:focus-visible {
+      outline: 3px solid rgba(23, 105, 170, .28);
+      outline-offset: 2px;
+    }
+
+    .app-shell {
+      display: flex;
+      direction: rtl;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .sidebar {
+      order: 1;
+      flex: 0 0 360px;
+      width: 360px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: var(--surface);
+      border-left: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      z-index: 5;
+    }
+
+    .sidebar-header {
+      padding: 20px 20px 16px;
+      color: #fff;
+      background: linear-gradient(135deg, #123c65 0%, #1769aa 68%, #2986bd 100%);
+    }
+
+    .brand-row { display: flex; align-items: center; gap: 11px; }
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      flex: 0 0 42px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.28);
+      border-radius: 12px;
+      background: rgba(255,255,255,.14);
+      font-size: 22px;
+    }
+    .brand-title { margin: 0; font-size: 16px; font-weight: 800; line-height: 1.6; }
+    .brand-subtitle { margin: 2px 0 0; color: rgba(255,255,255,.78); font-size: 11px; }
+    .header-caption {
+      margin: 14px 0 0;
+      padding-top: 11px;
+      border-top: 1px solid rgba(255,255,255,.18);
+      color: rgba(255,255,255,.86);
+      font-size: 11px;
+      line-height: 1.9;
+    }
+
+    .sidebar-content {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 16px;
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e1 transparent;
+    }
+
+    .section { margin-bottom: 17px; }
+    .section-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+      color: #25364d;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .section-heading .hint { color: var(--muted); font-size: 10px; font-weight: 400; }
+
+    .drop-zone {
+      display: block;
+      padding: 17px 12px 15px;
+      border: 1.5px dashed #9db8d2;
+      border-radius: 13px;
+      background: #f7fbff;
+      text-align: center;
+      transition: .18s ease;
+      cursor: pointer;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+    }
+    .drop-icon {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 9px;
+      border-radius: 13px;
+      background: #e5f1fb;
+      color: var(--primary);
+      font-size: 22px;
+    }
+    .drop-title { display: block; color: #1f3650; font-size: 12px; font-weight: 800; }
+    .drop-subtitle { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.8; }
+    .drop-zone input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+    .status-box {
+      display: none;
+      margin-top: 10px;
+      padding: 10px 11px;
+      border-radius: 10px;
+      font-size: 11px;
+      line-height: 1.8;
+      overflow-wrap: anywhere;
+    }
+    .status-box.show { display: block; }
+    .status-box.info { color: #24527a; background: #edf6ff; }
+    .status-box.success { color: var(--success); background: var(--success-bg); }
+    .status-box.error { color: var(--danger); background: var(--danger-bg); }
+    .status-box.warning { color: var(--warning); background: var(--warning-bg); }
+    .progress-track {
+      display: none;
+      width: 100%;
+      height: 5px;
+      margin-top: 9px;
+      overflow: hidden;
+      border-radius: 99px;
+      background: #dbe7f2;
+    }
+    .progress-track.show { display: block; }
+    .progress-bar { width: 38%; height: 100%; border-radius: inherit; background: var(--primary); animation: progress 1.1s ease-in-out infinite alternate; }
+    @keyframes progress { from { transform: translateX(155%); } to { transform: translateX(-155%); } }
+
+    .file-card {
+      display: none;
+      margin-top: 10px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--surface);
+    }
+    .file-card.show { display: block; }
+    .file-head { display: flex; align-items: flex-start; gap: 9px; }
+    .file-badge {
+      width: 34px; height: 34px; flex: 0 0 34px;
+      display: grid; place-items: center;
+      color: #1769aa; background: #eaf4fc; border-radius: 9px; font-size: 10px; font-weight: 800;
+    }
+    .file-meta { flex: 1; min-width: 0; }
+    .file-name { color: #25364d; font-size: 11px; font-weight: 800; overflow-wrap: anywhere; }
+    .file-size { margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .file-actions { display: flex; gap: 7px; margin-top: 10px; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 10px; }
+    .stat-box { padding: 8px 5px; border-radius: 9px; background: var(--surface-soft); text-align: center; }
+    .stat-value { display: block; color: #1d3551; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .stat-label { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+
+    .base-map-box {
+      display: grid;
+      gap: 7px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfdff;
+    }
+    .base-map-select {
+      width: 100%;
+      min-height: 37px;
+      padding: 7px 9px;
+      border: 1px solid #d6e0ea;
+      border-radius: 8px;
+      background: #fff;
+      color: #33465e;
+      font: inherit;
+      font-size: 11px;
+    }
+    .base-map-help { color: var(--muted); font-size: 10px; line-height: 1.8; }
+
+    .layer-list { display: flex; flex-direction: column; gap: 7px; }
+    .layer-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 40px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      cursor: pointer;
+      transition: background .15s ease, border-color .15s ease;
+    }
+    .layer-item:hover { border-color: #bdcfe0; background: #fbfdff; }
+    .layer-item input { width: 15px; height: 15px; margin: 0; accent-color: var(--primary); }
+    .layer-swatch { width: 21px; height: 6px; flex: 0 0 21px; border-radius: 8px; }
+    .swatch-power { background: #df3b45; }
+    .swatch-petroleum { background: #b46a2b; }
+    .swatch-telecom { background: #7666a8; border-top: 1px dashed #fff; }
+    .swatch-water { background: #3988cf; }
+    .swatch-other { background: #7c9b55; }
+    .layer-title { flex: 1; color: #33465e; font-size: 11px; font-weight: 700; }
+    .layer-type { color: #8a98a9; font-size: 9px; }
+
+    .button-row { display: flex; flex-wrap: wrap; gap: 7px; }
+    .btn {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 11px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      font-size: 10px;
+      font-weight: 700;
+      transition: .15s ease;
+    }
+    .btn-primary { color: #fff; background: var(--primary); }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-light { color: #40536a; border-color: var(--line); background: #fff; }
+    .btn-light:hover { background: #f5f8fb; }
+    .btn-danger { color: var(--danger); border-color: #f3d0cd; background: #fff; }
+    .btn-danger:hover { background: var(--danger-bg); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-block { width: 100%; }
+
+    .measure-box {
+      display: grid;
+      gap: 9px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfdff;
+    }
+    .measure-modes, .measure-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    .measure-modes .btn { flex: 1 1 125px; }
+    .measure-actions .btn { flex: 1 1 85px; }
+    .btn.active { color: #fff; border-color: var(--primary-dark); background: var(--primary-dark); }
+    .measure-readout {
+      padding: 10px;
+      border: 1px solid #dce8f3;
+      border-radius: 9px;
+      background: #f1f7fc;
+    }
+    .measure-readout-title { color: #52677e; font-size: 10px; font-weight: 700; }
+    .measure-readout-value { display: block; margin-top: 5px; color: #164f7f; font-size: 19px; font-weight: 800; direction: rtl; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .measure-readout-meta { margin-top: 5px; color: #718197; font-size: 10px; line-height: 1.8; }
+    .measure-help { color: var(--muted); font-size: 10px; line-height: 1.9; }
+    .map-measuring .maplibregl-canvas { cursor: crosshair !important; }
+
+    .info-note {
+      padding: 10px 11px;
+      border: 1px solid #e6edf4;
+      border-radius: 10px;
+      background: #fafcff;
+      color: #68788b;
+      font-size: 10px;
+      line-height: 1.95;
+    }
+    .info-note strong { color: #3d526b; }
+
+    .sidebar-footer {
+      padding: 10px 15px;
+      border-top: 1px solid var(--line);
+      color: #8391a2;
+      background: #fcfdff;
+      text-align: center;
+      font-size: 9px;
+      line-height: 1.8;
+    }
+    .sidebar-footer a { color: #1769aa; text-decoration: none; }
+    .sidebar-footer a:hover { text-decoration: underline; }
+
+    .map-wrap { order: 2; position: relative; flex: 1 1 auto; min-width: 0; height: 100%; background: #e8edf2; }
+    #map { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .map-top-note {
+      position: absolute;
+      z-index: 3;
+      top: 13px;
+      left: 13px;
+      max-width: min(360px, calc(100% - 26px));
+      padding: 8px 11px;
+      border: 1px solid rgba(210,220,231,.9);
+      border-radius: 10px;
+      background: rgba(255,255,255,.94);
+      box-shadow: 0 3px 14px rgba(22,38,58,.08);
+      color: #5b6d80;
+      font-size: 10px;
+      line-height: 1.7;
+      direction: rtl;
+      pointer-events: none;
+    }
+    .maplibregl-ctrl-top-left { left: 10px; top: 62px; }
+    .maplibregl-ctrl-attrib { direction: ltr; text-align: left; }
+
+    .popup-card { min-width: 190px; max-width: 290px; direction: rtl; color: #24364b; font-family: Tahoma, "Segoe UI", Arial, sans-serif; }
+    .popup-title { margin: 0 0 8px; padding-bottom: 7px; border-bottom: 1px solid #e7edf3; font-size: 12px; font-weight: 800; overflow-wrap: anywhere; }
+    .popup-row { display: grid; grid-template-columns: minmax(75px, auto) 1fr; gap: 8px; padding: 4px 0; font-size: 10px; line-height: 1.7; }
+    .popup-key { color: #758397; font-weight: 700; }
+    .popup-value { color: #2c3d52; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow: auto; }
+    .popup-empty { color: #8794a5; font-size: 10px; }
+
+    @media (max-width: 760px) {
+      .app-shell { flex-direction: column; }
+      .map-wrap { order: 1; flex: 1 1 auto; min-height: 50vh; }
+      .sidebar { order: 2; flex: 0 0 auto; width: 100%; height: 43vh; border-left: 0; border-top: 1px solid var(--line); }
+      .sidebar-header { padding: 10px 14px; }
+      .brand-mark { width: 34px; height: 34px; flex-basis: 34px; border-radius: 10px; font-size: 18px; }
+      .brand-title { font-size: 13px; }
+      .brand-subtitle { font-size: 9px; }
+      .header-caption { display: none; }
+      .sidebar-content { padding: 11px 13px; }
+      .sidebar-footer { padding: 6px 10px; }
+      .map-top-note { top: 9px; left: 9px; }
+      .maplibregl-ctrl-top-left { top: 52px; left: 8px; }
+    }
+
+    @media (max-width: 390px) {
+      .sidebar { height: 47vh; }
+      .map-wrap { min-height: 53vh; }
+      .stats-grid { gap: 5px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar" aria-label="پنل مدیریت نقشه">
+      <header class="sidebar-header">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">⌖</div>
+          <div>
+            <h1 class="brand-title">نمایشگر نقشه KMZ</h1>
+            <p class="brand-subtitle">KMZ / KML · Open Infrastructure Map</p>
+          </div>
+        </div>
+        <p class="header-caption">فایل KMZ را بارگذاری کنید و عوارض جغرافیایی آن را روی تصویر ماهواره‌ای یا نقشهٔ خیابانی، همراه با لایه‌های زیرساختی OpenInfraMap مشاهده کنید.</p>
+      </header>
+
+      <div class="sidebar-content">
+        <section class="section" aria-labelledby="uploadHeading">
+          <h2 class="section-heading" id="uploadHeading">
+            <span>۱. بارگذاری فایل KMZ</span>
+            <span class="hint">پردازش در مرورگر</span>
+          </h2>
+          <label class="drop-zone" id="dropZone" for="kmzFile">
+            <span class="drop-icon" aria-hidden="true">⇧</span>
+            <span class="drop-title">فایل را اینجا رها کنید یا انتخاب نمایید</span>
+            <span class="drop-subtitle">فرمت مجاز: KMZ · حداکثر حجم فایل: ۸۰ مگابایت</span>
+            <input id="kmzFile" type="file" accept=".kmz,application/vnd.google-earth.kmz,application/zip" aria-label="انتخاب فایل KMZ">
+          </label>
+          <div class="progress-track" id="progressTrack" aria-hidden="true"><div class="progress-bar"></div></div>
+          <div class="status-box" id="statusBox" role="status" aria-live="polite"></div>
+
+          <div class="file-card" id="fileCard">
+            <div class="file-head">
+              <div class="file-badge">KMZ</div>
+              <div class="file-meta">
+                <div class="file-name" id="fileName">—</div>
+                <div class="file-size" id="fileSize">—</div>
+              </div>
+            </div>
+            <div class="stats-grid" aria-label="آمار عوارض فایل">
+              <div class="stat-box"><span class="stat-value" id="pointCount">۰</span><span class="stat-label">نقطه</span></div>
+              <div class="stat-box"><span class="stat-value" id="lineCount">۰</span><span class="stat-label">خط</span></div>
+              <div class="stat-box"><span class="stat-value" id="polygonCount">۰</span><span class="stat-label">پلیگون</span></div>
+            </div>
+            <div class="file-actions">
+              <button class="btn btn-primary" id="fitButton" type="button">⌖ نمایش محدوده</button>
+              <button class="btn btn-light" id="removeButton" type="button">حذف لایه</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="baseMapHeading">
+          <h2 class="section-heading" id="baseMapHeading">
+            <span>۲. نقشهٔ زمینه</span>
+            <span class="hint">نقشهٔ جهانی</span>
+          </h2>
+          <div class="base-map-box">
+            <!-- فقط دو گزینه Esri باقی می‌مانند -->
+            <select class="base-map-select" id="baseMapSelect" aria-label="انتخاب نقشهٔ زمینه">
+              <option value="esri-satellite">تصویر ماهواره‌ای Esri (پیش‌فرض)</option>
+              <option value="esri-street">نقشهٔ خیابانی Esri (پایدار)</option>
+            </select>
+            <div class="base-map-help" id="baseMapHelp">
+              تصویر ماهواره‌ای جهانی Esri فعال است. وضوح تصاویر در مناطق مختلف یکسان نیست و به پوشش داده‌های تأمین‌کنندگان تصویر بستگی دارد.
+            </div>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="infraHeading">
+          <h2 class="section-heading" id="infraHeading">
+            <span>۳. لایه‌های زیرساختی</span>
+            <span class="hint">OpenInfraMap · MVT</span>
+          </h2>
+          <div class="layer-list">
+            <label class="layer-item"><input type="checkbox" data-group="power" checked><span class="layer-swatch swatch-power"></span><span class="layer-title">شبکه برق و پست‌ها</span><span class="layer-type">Power</span></label>
+            <label class="layer-item"><input type="checkbox" data-group="petroleum" checked><span class="layer-swatch swatch-petroleum"></span><span class="layer-title">نفت، گاز و چاه‌ها</span><span class="layer-type">Petroleum</span></label>
+            <label class="layer-item"><input type="checkbox" data-group="telecoms" checked><span class="layer-swatch swatch-telecom"></span><span class="layer-title">مخابرات و دکل‌ها</span><span class="layer-type">Telecoms</span></label>
+            <label class="layer-item"><input type="checkbox" data-group="water" checked><span class="layer-swatch swatch-water"></span><span class="layer-title">خطوط و تأسیسات آب</span><span class="layer-type">Water</span></label>
+            <label class="layer-item"><input type="checkbox" data-group="otherPipeline" checked><span class="layer-swatch swatch-other"></span><span class="layer-title">سایر خطوط لوله</span><span class="layer-type">Other</span></label>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="kmzLayerHeading">
+          <h2 class="section-heading" id="kmzLayerHeading"><span>۴. کنترل لایهٔ KMZ</span></h2>
+          <label class="layer-item">
+            <input type="checkbox" id="kmzVisibility" checked disabled>
+            <span class="layer-swatch" style="height:4px;background:#1769aa"></span>
+            <span class="layer-title">نمایش عوارض فایل بارگذاری‌شده</span>
+            <span class="layer-type" id="kmzLayerStatus">غیرفعال</span>
+          </label>
+        </section>
+
+        <section class="section" aria-labelledby="measurementHeading">
+          <h2 class="section-heading" id="measurementHeading">
+            <span>۵. ابزار اندازه‌گیری</span>
+            <span class="hint">محاسبه روی سطح زمین</span>
+          </h2>
+          <div class="measure-box">
+            <div class="measure-modes">
+              <button class="btn btn-light" id="measureDistanceButton" type="button" aria-pressed="false">↔ اندازه‌گیری فاصله</button>
+              <button class="btn btn-light" id="measureAreaButton" type="button" aria-pressed="false">▱ اندازه‌گیری مساحت</button>
+            </div>
+            <div class="measure-readout" aria-live="polite" aria-atomic="true">
+              <div class="measure-readout-title" id="measureResultTitle">نتیجهٔ اندازه‌گیری</div>
+              <strong class="measure-readout-value" id="measureResultValue">—</strong>
+              <div class="measure-readout-meta" id="measureResultMeta">یکی از ابزارها را انتخاب کنید و نقاط را روی نقشه علامت بزنید.</div>
+            </div>
+            <div class="measure-actions">
+              <button class="btn btn-primary" id="finishMeasureButton" type="button" disabled>پایان اندازه‌گیری</button>
+              <button class="btn btn-light" id="undoMeasureButton" type="button" disabled>بازگشت نقطه</button>
+              <button class="btn btn-danger" id="clearMeasureButton" type="button" disabled>پاک‌کردن</button>
+            </div>
+            <div class="measure-help" id="measureHelp">فاصله: حداقل ۲ نقطه. مساحت: حداقل ۳ نقطه. برای ثبت هر رأس روی نقشه کلیک کنید؛ برای پایان از دکمهٔ «پایان اندازه‌گیری» استفاده کنید.</div>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="locationHeading">
+          <h2 class="section-heading" id="locationHeading">
+            <span>۶. موقعیت فعلی کاربر</span>
+            <span class="hint">GPS / مکان‌یابی مرورگر</span>
+          </h2>
+          <div class="base-map-box">
+            <button class="btn btn-primary" id="locateMeButton" type="button">◎ نمایش موقعیت فعلی من روی نقشه</button>
+            <div class="base-map-help" id="locationStatus" role="status" aria-live="polite">پس از بارگذاری نقشه، درخواست مجوز موقعیت مکانی به‌صورت خودکار نمایش داده می‌شود. در صورت رد درخواست، از دکمهٔ زیر برای تلاش مجدد استفاده کنید.</div>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="mapToolsHeading">
+          <h2 class="section-heading" id="mapToolsHeading"><span>ابزارهای نقشه</span></h2>
+          <div class="button-row">
+            <button class="btn btn-light" id="worldButton" type="button">نمایش کل جهان</button>
+            <button class="btn btn-light" id="homeButton" type="button">نمای اولیه</button>
+          </div>
+        </section>
+
+        <div class="info-note">
+          <strong>توجه:</strong> عوارض KMZ فقط در حافظهٔ مرورگر پردازش می‌شوند. نقشهٔ زمینه و لایه‌های OpenInfraMap به اینترنت نیاز دارند. کامل بودن اطلاعات زیرساخت به داده‌های ثبت‌شده در OpenStreetMap بستگی دارد.
+        </div>
+      </div>
+
+      <footer class="sidebar-footer">
+        داده‌ها: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a> ·
+        <a href="https://openinframap.org/" target="_blank" rel="noopener noreferrer">OpenInfraMap</a> ·
+        <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">© Esri</a>
+      </footer>
+    </aside>
+
+    <section class="map-wrap" aria-label="نقشه">
+      <div id="map" role="application" aria-label="نقشه تعاملی زیرساخت و فایل KMZ"></div>
+      <div class="map-top-note">برای مشاهدهٔ مشخصات عوارض روی آن‌ها کلیک کنید.</div>
+    </section>
+  </main>
+
+  <!-- JSZip: unzip KMZ archives in the browser -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js"></script>
+
+  <script type="module">
+    import * as maplibregl from 'https://cdn.jsdelivr.net/npm/maplibre-gl@6.18.0/dist/maplibre-gl.mjs';
+
+    'use strict';
+
+    const MAX_FILE_BYTES = 80 * 1024 * 1024;
+    const MAX_UNCOMPRESSED_BYTES = 300 * 1024 * 1024;
+    const MAX_KML_CHARS = 50 * 1024 * 1024;
+
+    const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>';
+    const ESRI_ATTRIBUTION = 'Sources: <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a>, Vantor, Earthstar Geographics, and the GIS User Community';
+    const OIM_ATTRIBUTION = '© <a href="https://openinframap.org/copyright" target="_blank" rel="noopener noreferrer">OpenInfraMap</a>';
+
+    const groupLayerIds = {
+      power: ['oim-power-lines', 'oim-power-plant-fill', 'oim-power-plant-outline', 'oim-power-substations', 'oim-power-towers'],
+      petroleum: ['oim-petroleum-lines', 'oim-petroleum-sites', 'oim-petroleum-wells'],
+      telecoms: ['oim-telecom-lines', 'oim-telecom-datacenters', 'oim-telecom-masts'],
+      water: ['oim-water-lines', 'oim-water-pressure-lines', 'oim-water-reservoirs', 'oim-water-wells'],
+      otherPipeline: ['oim-other-pipelines']
+    };
+
+    const kmzLayerIds = ['kmz-polygons', 'kmz-polygon-outline', 'kmz-lines', 'kmz-points', 'kmz-point-labels'];
+    let currentGeoJson = null;
+    let currentBounds = null;
+    let currentFile = null;
+    let mapReady = false;
+    let popupHandlersInstalled = false;
+    let measurementMode = null; // 'distance' | 'area'
+    let measurementActive = false;
+    let measurementCoordinates = [];
+    const MEASUREMENT_SOURCE_ID = 'user-measurement-source';
+    const EARTH_RADIUS_METERS = 6371008.8;
+    const MAX_MEASUREMENT_POINTS = 1000;
+    const USER_LOCATION_SOURCE_ID = 'user-current-location';
+    let lastUserPosition = null;
+
+    const elements = {
+      fileInput: document.getElementById('kmzFile'),
+      dropZone: document.getElementById('dropZone'),
+      statusBox: document.getElementById('statusBox'),
+      progressTrack: document.getElementById('progressTrack'),
+      fileCard: document.getElementById('fileCard'),
+      fileName: document.getElementById('fileName'),
+      fileSize: document.getElementById('fileSize'),
+      pointCount: document.getElementById('pointCount'),
+      lineCount: document.getElementById('lineCount'),
+      polygonCount: document.getElementById('polygonCount'),
+      fitButton: document.getElementById('fitButton'),
+      removeButton: document.getElementById('removeButton'),
+      kmzVisibility: document.getElementById('kmzVisibility'),
+      kmzLayerStatus: document.getElementById('kmzLayerStatus'),
+      worldButton: document.getElementById('worldButton'),
+      homeButton: document.getElementById('homeButton'),
+      locateMeButton: document.getElementById('locateMeButton'),
+      locationStatus: document.getElementById('locationStatus'),
+      baseMapSelect: document.getElementById('baseMapSelect'),
+      baseMapHelp: document.getElementById('baseMapHelp'),
+      measureDistanceButton: document.getElementById('measureDistanceButton'),
+      measureAreaButton: document.getElementById('measureAreaButton'),
+      finishMeasureButton: document.getElementById('finishMeasureButton'),
+      undoMeasureButton: document.getElementById('undoMeasureButton'),
+      clearMeasureButton: document.getElementById('clearMeasureButton'),
+      measureResultTitle: document.getElementById('measureResultTitle'),
+      measureResultValue: document.getElementById('measureResultValue'),
+      measureResultMeta: document.getElementById('measureResultMeta'),
+      measureHelp: document.getElementById('measureHelp')
+    };
+
+    function setStatus(message, type = 'info') {
+      elements.statusBox.textContent = message;
+      elements.statusBox.className = `status-box show ${type}`;
+    }
+
+    function setBusy(isBusy) {
+      elements.progressTrack.classList.toggle('show', isBusy);
+      elements.fileInput.disabled = isBusy;
+      elements.fitButton.disabled = isBusy || !currentBounds;
+      elements.removeButton.disabled = isBusy || !currentGeoJson;
+    }
+
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes) || bytes < 0) return '—';
+      if (bytes < 1024) return `${bytes} بایت`;
+      const units = ['KB', 'MB', 'GB'];
+      let value = bytes / 1024;
+      let unit = units[0];
+      for (let i = 1; i < units.length && value >= 1024; i++) {
+        value /= 1024;
+        unit = units[i];
+      }
+      return `${value.toFixed(2)} ${unit}`;
+    }
+
+    function toPersianDigits(value) {
+      return String(value).replace(/\d/g, digit => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]);
+    }
+
+    const map = new maplibregl.Map({
+      container: 'map',
+      center: [0, 20],
+      zoom: 2,
+      minZoom: 1,
+      maxZoom: 19,
+      attributionControl: true,
+      style: {
+        version: 8,
+        name: 'OpenInfraMap infrastructure overlays',
+        glyphs: 'https://openinframap.org/fonts/{fontstack}/{range}.pbf',
+        sources: {
+          esriSatellite: {
+            type: 'raster',
+            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+            tileSize: 256,
+            maxzoom: 23,
+            attribution: ESRI_ATTRIBUTION
+          },
+          oimPower: {
+            type: 'vector',
+            tiles: ['https://openinframap.org/map/power/{z}/{x}/{y}.pbf'],
+            maxzoom: 17,
+            attribution: OIM_ATTRIBUTION
+          },
+          oimPetroleum: {
+            type: 'vector',
+            tiles: ['https://openinframap.org/map/petroleum/{z}/{x}/{y}.pbf'],
+            maxzoom: 17,
+            attribution: OIM_ATTRIBUTION
+          },
+          oimTelecoms: {
+            type: 'vector',
+            tiles: ['https://openinframap.org/map/telecoms/{z}/{x}/{y}.pbf'],
+            maxzoom: 17,
+            attribution: OIM_ATTRIBUTION
+          },
+          oimWater: {
+            type: 'vector',
+            tiles: ['https://openinframap.org/map/water/{z}/{x}/{y}.pbf'],
+            maxzoom: 17,
+            attribution: OIM_ATTRIBUTION
+          },
+          oimOtherPipeline: {
+            type: 'vector',
+            tiles: ['https://openinframap.org/map/other_pipeline/{z}/{x}/{y}.pbf'],
+            maxzoom: 17,
+            attribution: OIM_ATTRIBUTION
+          }
+        },
+        layers: [
+          // تغییر آیدی به esri-satellite-layer
+          { id: 'esri-satellite-layer', type: 'raster', source: 'esriSatellite', paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 } },
+
+          // POWER infrastructure
+          {
+            id: 'oim-power-lines', type: 'line', source: 'oimPower', 'source-layer': 'power_line',
+            minzoom: 5,
+            paint: {
+              'line-color': ['step', ['to-number', ['coalesce', ['get', 'voltage'], 0]], '#7A7A85', 10, '#6E97B8', 25, '#55B555', 52, '#B59F10', 132, '#B55D00', 220, '#C73030', 310, '#B54EB2', 550, '#00C1CF'],
+              'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.7, 12, 1.6, 17, 3.2],
+              'line-opacity': 0.9
+            }
+          },
+          {
+            id: 'oim-power-plant-fill', type: 'fill', source: 'oimPower', 'source-layer': 'power_plant', minzoom: 7,
+            paint: { 'fill-color': '#a97945', 'fill-opacity': 0.32 }
+          },
+          {
+            id: 'oim-power-plant-outline', type: 'line', source: 'oimPower', 'source-layer': 'power_plant', minzoom: 8,
+            paint: { 'line-color': '#60452b', 'line-width': 1.2 }
+          },
+          {
+            id: 'oim-power-substations', type: 'fill', source: 'oimPower', 'source-layer': 'power_substation', minzoom: 13,
+            paint: { 'fill-color': '#dc8d32', 'fill-opacity': 0.30, 'fill-outline-color': '#87541d' }
+          },
+          {
+            id: 'oim-power-towers', type: 'circle', source: 'oimPower', 'source-layer': 'power_tower', minzoom: 13,
+            paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 1.8, 18, 4], 'circle-color': '#c73542', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 0.8 }
+          },
+
+          // PETROLEUM / GAS infrastructure
+          {
+            id: 'oim-petroleum-lines', type: 'line', source: 'oimPetroleum', 'source-layer': 'petroleum_pipeline', minzoom: 3,
+            paint: {
+              'line-color': ['match', ['get', 'substance'], ['oil'], '#686868', ['fuel'], '#b47b55', ['hydrogen'], '#c16b9a', '#d47831'],
+              'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.0, 13, 2.2, 17, 3.6]
+            }
+          },
+          {
+            id: 'oim-petroleum-sites', type: 'fill', source: 'oimPetroleum', 'source-layer': 'petroleum_site', minzoom: 8,
+            paint: { 'fill-color': '#9b603d', 'fill-opacity': 0.28, 'fill-outline-color': '#6e4129' }
+          },
+          {
+            id: 'oim-petroleum-wells', type: 'circle', source: 'oimPetroleum', 'source-layer': 'petroleum_well', minzoom: 10,
+            paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2, 17, 5], 'circle-color': '#79523b', 'circle-stroke-color': '#fff', 'circle-stroke-width': 0.8 }
+          },
+
+          // TELECOMMUNICATIONS infrastructure
+          {
+            id: 'oim-telecom-lines', type: 'line', source: 'oimTelecoms', 'source-layer': 'telecoms_communication_line', minzoom: 6,
+            paint: { 'line-color': '#7563a7', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.7, 16, 2.4], 'line-dasharray': [2.5, 2] }
+          },
+          {
+            id: 'oim-telecom-datacenters', type: 'fill', source: 'oimTelecoms', 'source-layer': 'telecoms_data_center', minzoom: 10,
+            paint: { 'fill-color': '#8061b4', 'fill-opacity': 0.30, 'fill-outline-color': '#4f3c73' }
+          },
+          {
+            id: 'oim-telecom-masts', type: 'circle', source: 'oimTelecoms', 'source-layer': 'telecoms_mast', minzoom: 10,
+            paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2, 17, 5], 'circle-color': '#67518f', 'circle-stroke-color': '#fff', 'circle-stroke-width': 0.8 }
+          },
+
+          // WATER infrastructure
+          {
+            id: 'oim-water-lines', type: 'line', source: 'oimWater', 'source-layer': 'water_pipeline', minzoom: 3,
+            paint: { 'line-color': '#3988cf', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.8, 15, 3.2], 'line-opacity': 0.95 }
+          },
+          {
+            id: 'oim-water-pressure-lines', type: 'line', source: 'oimWater', 'source-layer': 'pressurised_waterway', minzoom: 5,
+            paint: { 'line-color': '#58a6df', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.8, 16, 2.7], 'line-dasharray': [3, 1.5] }
+          },
+          {
+            id: 'oim-water-reservoirs', type: 'fill', source: 'oimWater', 'source-layer': 'water_reservoir', minzoom: 7,
+            paint: { 'fill-color': '#4e9bc9', 'fill-opacity': 0.28, 'fill-outline-color': '#2773a4' }
+          },
+          {
+            id: 'oim-water-wells', type: 'circle', source: 'oimWater', 'source-layer': 'water_well', minzoom: 8,
+            paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 1.5, 17, 4.5], 'circle-color': '#337fb7', 'circle-stroke-color': '#fff', 'circle-stroke-width': 0.8 }
+          },
+
+          // OTHER PIPELINES
+          {
+            id: 'oim-other-pipelines', type: 'line', source: 'oimOtherPipeline', 'source-layer': 'other_pipeline', minzoom: 3,
+            paint: {
+              'line-color': ['match', ['get', 'substance'], ['oxygen'], '#39a9b8', ['carbon_dioxide'], '#7e83c3', ['nitrogen'], '#783f9e', '#8a9954'],
+              'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.9, 16, 2.8]
+            }
+          }
+        ]
+      }
+    });
+
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-left');
+    map.addControl(new maplibregl.FullscreenControl(), 'top-left');
+
+    map.on('load', () => {
+      mapReady = true;
+      initializeMeasurementLayer();
+      initializeUserLocationLayer();
+      refreshMeasurementControls();
+      elements.kmzVisibility.disabled = true;
+      document.querySelectorAll('[data-group]').forEach(input => {
+        input.addEventListener('change', () => toggleInfrastructureGroup(input.dataset.group, input.checked));
+      });
+      elements.baseMapSelect.addEventListener('change', () => setBaseMap(elements.baseMapSelect.value));
+
+      locateCurrentUser();
+    });
+
+    map.on('click', event => handleMeasurementMapClick(event));
+
+    map.on('error', event => {
+      const message = event?.error?.message || '';
+      if (/WebGL|webgl/i.test(message)) {
+        setStatus('مرورگر یا کارت گرافیک، WebGL موردنیاز نقشه را در دسترس قرار نداده است.', 'error');
+      }
+    });
+
+    function initializeUserLocationLayer() {
+      if (map.getSource(USER_LOCATION_SOURCE_ID)) return;
+      map.addSource(USER_LOCATION_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+      map.addLayer({
+        id: 'user-location-accuracy', type: 'fill', source: USER_LOCATION_SOURCE_ID,
+        filter: ['==', ['get', 'kind'], 'accuracy'],
+        paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.13 }
+      });
+      map.addLayer({
+        id: 'user-location-accuracy-outline', type: 'line', source: USER_LOCATION_SOURCE_ID,
+        filter: ['==', ['get', 'kind'], 'accuracy'],
+        paint: { 'line-color': '#2563eb', 'line-width': 1.5, 'line-dasharray': [2, 1] }
+      });
+      map.addLayer({
+        id: 'user-location-point', type: 'circle', source: USER_LOCATION_SOURCE_ID,
+        filter: ['==', ['get', 'kind'], 'position'],
+        paint: {
+          'circle-radius': 8, 'circle-color': '#2563eb',
+          'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3,
+          'circle-opacity': 1
+        }
+      });
+    }
+
+    function createAccuracyCircle(longitude, latitude, radiusMeters, steps = 64) {
+      const angularDistance = Math.max(0, radiusMeters) / EARTH_RADIUS_METERS;
+      const lat1 = latitude * Math.PI / 180;
+      const lon1 = longitude * Math.PI / 180;
+      const ring = [];
+      for (let i = 0; i <= steps; i++) {
+        const bearing = 2 * Math.PI * i / steps;
+        const lat2 = Math.asin(
+          Math.sin(lat1) * Math.cos(angularDistance) +
+          Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing)
+        );
+        const lon2 = lon1 + Math.atan2(
+          Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1),
+          Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2)
+        );
+        ring.push([lon2 * 180 / Math.PI, lat2 * 180 / Math.PI]);
+      }
+      return ring;
+    }
+
+    function locateCurrentUser() {
+      if (!navigator.geolocation) {
+        elements.locationStatus.textContent = 'این مرورگر از مکان‌یابی جغرافیایی پشتیبانی نمی‌کند.';
+        return;
+      }
+      if (!window.isSecureContext) {
+        elements.locationStatus.textContent = 'برای امنیت، مکان‌یابی فقط در HTTPS یا localhost فعال است. برنامه را از طریق IIS با HTTPS باز کنید.';
+        return;
+      }
+
+      elements.locateMeButton.disabled = true;
+      elements.locationStatus.textContent = 'در حال دریافت موقعیت فعلی از مرورگر…';
+      navigator.geolocation.getCurrentPosition(position => {
+        elements.locateMeButton.disabled = false;
+        const longitude = position.coords.longitude;
+        const latitude = position.coords.latitude;
+        const accuracy = Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : 0;
+        lastUserPosition = { longitude, latitude, accuracy };
+
+        const features = [{
+          type: 'Feature',
+          properties: { kind: 'position' },
+          geometry: { type: 'Point', coordinates: [longitude, latitude] }
+        }];
+        if (accuracy > 0) {
+          features.push({
+            type: 'Feature',
+            properties: { kind: 'accuracy' },
+            geometry: { type: 'Polygon', coordinates: [createAccuracyCircle(longitude, latitude, accuracy)] }
+          });
+        }
+        const source = map.getSource(USER_LOCATION_SOURCE_ID);
+        if (source) source.setData({ type: 'FeatureCollection', features });
+
+        map.flyTo({
+          center: [longitude, latitude],
+          zoom: Math.max(map.getZoom(), 15),
+          duration: 1000
+        });
+        elements.locationStatus.textContent = `موقعیت روی نقشه نمایش داده شد. دقت تقریبی: ${Math.round(accuracy).toLocaleString('fa-IR')} متر · مختصات: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      }, error => {
+        elements.locateMeButton.disabled = false;
+        const messages = {
+          1: 'دسترسی به موقعیت رد شد یا قبلاً مسدود شده است. در Chrome اندروید، روی آیکون کنار نشانی سایت بزنید، وارد Permissions ← Location شوید و Allow را انتخاب کنید؛ سپس دکمهٔ تلاش مجدد را بزنید.',
+          2: 'موقعیت فعلاً قابل تشخیص نیست. GPS یا سرویس مکان‌یابی دستگاه را بررسی کنید.',
+          3: 'زمان دریافت موقعیت به پایان رسید. دوباره تلاش کنید.'
+        };
+        elements.locationStatus.textContent = messages[error.code] || 'دریافت موقعیت با خطا مواجه شد.';
+      }, {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 10000
+      });
+    }
+
+    elements.locateMeButton.addEventListener('click', locateCurrentUser);
+
+    function initializeMeasurementLayer() {
+      if (map.getSource(MEASUREMENT_SOURCE_ID)) return;
+      map.addSource(MEASUREMENT_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+      map.addLayer({
+        id: 'user-measurement-area',
+        type: 'fill',
+        source: MEASUREMENT_SOURCE_ID,
+        filter: ['==', '$type', 'Polygon'],
+        paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.20 }
+      });
+      map.addLayer({
+        id: 'user-measurement-area-outline',
+        type: 'line',
+        source: MEASUREMENT_SOURCE_ID,
+        filter: ['==', '$type', 'Polygon'],
+        paint: { 'line-color': '#d97706', 'line-width': 2.5, 'line-dasharray': [2, 1] }
+      });
+      map.addLayer({
+        id: 'user-measurement-line',
+        type: 'line',
+        source: MEASUREMENT_SOURCE_ID,
+        filter: ['==', '$type', 'LineString'],
+        paint: { 'line-color': '#f97316', 'line-width': 3.5, 'line-opacity': 0.98 }
+      });
+      map.addLayer({
+        id: 'user-measurement-points',
+        type: 'circle',
+        source: MEASUREMENT_SOURCE_ID,
+        filter: ['==', '$type', 'Point'],
+        paint: {
+          'circle-radius': 6,
+          'circle-color': '#ffffff',
+          'circle-stroke-color': '#ea580c',
+          'circle-stroke-width': 2.5
+        }
+      });
+      map.addLayer({
+        id: 'user-measurement-labels',
+        type: 'symbol',
+        source: MEASUREMENT_SOURCE_ID,
+        filter: ['==', '$type', 'Point'],
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 11,
+          'text-offset': [0, 1.2],
+          'text-anchor': 'top',
+          'text-allow-overlap': true
+        },
+        paint: {
+          'text-color': '#7c2d12',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.5
+        }
+      });
+    }
+
+    function buildMeasurementFeatureCollection() {
+      const features = [];
+      const coordinates = measurementCoordinates;
+      if (coordinates.length >= 2) {
+        features.push({
+          type: 'Feature',
+          properties: { kind: 'path' },
+          geometry: { type: 'LineString', coordinates: coordinates.map(point => [...point]) }
+        });
+      }
+      if (measurementMode === 'area' && coordinates.length >= 3) {
+        const ring = coordinates.map(point => [...point]);
+        ring.push([...coordinates[0]]);
+        features.push({
+          type: 'Feature',
+          properties: { kind: 'area' },
+          geometry: { type: 'Polygon', coordinates: [ring] }
+        });
+      }
+      coordinates.forEach((coordinate, index) => {
+        features.push({
+          type: 'Feature',
+          properties: { kind: 'vertex', label: toPersianDigits(index + 1) },
+          geometry: { type: 'Point', coordinates: [...coordinate] }
+        });
+      });
+      return { type: 'FeatureCollection', features };
+    }
+
+    function refreshMeasurementMap() {
+      const source = map.getSource(MEASUREMENT_SOURCE_ID);
+      if (source) source.setData(buildMeasurementFeatureCollection());
+    }
+
+    function calculateSegmentDistance(a, b) {
+      const toRadians = value => value * Math.PI / 180;
+      const lat1 = toRadians(a[1]);
+      const lat2 = toRadians(b[1]);
+      const deltaLat = lat2 - lat1;
+      const deltaLon = toRadians(b[0] - a[0]);
+      const sinLat = Math.sin(deltaLat / 2);
+      const sinLon = Math.sin(deltaLon / 2);
+      const haversine = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+      const bounded = Math.min(1, Math.max(0, haversine));
+      return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(bounded));
+    }
+
+    function calculatePathLength(coordinates, closeRing = false) {
+      if (coordinates.length < 2) return 0;
+      let total = 0;
+      for (let index = 1; index < coordinates.length; index++) {
+        total += calculateSegmentDistance(coordinates[index - 1], coordinates[index]);
+      }
+      if (closeRing && coordinates.length >= 3) {
+        total += calculateSegmentDistance(coordinates[coordinates.length - 1], coordinates[0]);
+      }
+      return total;
+    }
+
+    function calculateSphericalArea(coordinates) {
+      if (coordinates.length < 3) return 0;
+      let sum = 0;
+      for (let index = 0; index < coordinates.length; index++) {
+        const current = coordinates[index];
+        const next = coordinates[(index + 1) % coordinates.length];
+        const latitude1 = current[1] * Math.PI / 180;
+        const latitude2 = next[1] * Math.PI / 180;
+        let deltaLongitude = (next[0] - current[0]) * Math.PI / 180;
+        if (deltaLongitude > Math.PI) deltaLongitude -= 2 * Math.PI;
+        if (deltaLongitude < -Math.PI) deltaLongitude += 2 * Math.PI;
+        sum += deltaLongitude * (2 + Math.sin(latitude1) + Math.sin(latitude2));
+      }
+      return Math.abs(sum * EARTH_RADIUS_METERS * EARTH_RADIUS_METERS / 2);
+    }
+
+    function formatMeasuredDistance(meters) {
+      if (!Number.isFinite(meters)) return '—';
+      if (meters < 1000) return `${toPersianDigits(meters.toFixed(1))} متر`;
+      return `${toPersianDigits((meters / 1000).toFixed(3))} کیلومتر`;
+    }
+
+    function formatMeasuredArea(squareMeters) {
+      if (!Number.isFinite(squareMeters)) return '—';
+      if (squareMeters < 10000) return `${toPersianDigits(squareMeters.toFixed(1))} مترمربع`;
+      if (squareMeters < 1000000) return `${toPersianDigits((squareMeters / 10000).toFixed(3))} هکتار`;
+      return `${toPersianDigits((squareMeters / 1000000).toFixed(4))} کیلومترمربع`;
+    }
+
+    function updateMeasurementReadout(isFinal = false) {
+      const count = measurementCoordinates.length;
+      if (!measurementMode || count === 0) {
+        elements.measureResultTitle.textContent = 'نتیجهٔ اندازه‌گیری';
+        elements.measureResultValue.textContent = '—';
+        elements.measureResultMeta.textContent = 'یکی از ابزارها را انتخاب کنید و نقاط را روی نقشه علامت بزنید.';
+        return;
+      }
+
+      if (measurementMode === 'distance') {
+        if (count < 2) {
+          elements.measureResultTitle.textContent = 'نقطهٔ شروع ثبت شد';
+          elements.measureResultValue.textContent = '—';
+          elements.measureResultMeta.textContent = 'برای محاسبهٔ فاصله، نقطهٔ دوم را روی نقشه انتخاب کنید.';
+        } else {
+          const distance = calculatePathLength(measurementCoordinates);
+          elements.measureResultTitle.textContent = isFinal ? 'فاصلهٔ نهایی' : 'فاصلهٔ کل تا این نقطه';
+          elements.measureResultValue.textContent = formatMeasuredDistance(distance);
+          elements.measureResultMeta.textContent = `${toPersianDigits(count)} نقطه · ${toPersianDigits(count - 1)} قطعه خطی`;
+        }
+      } else {
+        if (count < 3) {
+          elements.measureResultTitle.textContent = 'در حال ترسیم محدوده';
+          elements.measureResultValue.textContent = '—';
+          elements.measureResultMeta.textContent = 'برای محاسبهٔ مساحت، حداقل سه نقطه (سه رأس) لازم است.';
+        } else {
+          const area = calculateSphericalArea(measurementCoordinates);
+          const perimeter = calculatePathLength(measurementCoordinates, true);
+          elements.measureResultTitle.textContent = isFinal ? 'مساحت نهایی' : 'مساحت تقریبی محدوده';
+          elements.measureResultValue.textContent = formatMeasuredArea(area);
+          elements.measureResultMeta.textContent = `محیط: ${formatMeasuredDistance(perimeter)} · ${toPersianDigits(count)} رأس`;
+        }
+      }
+    }
+
+    function refreshMeasurementControls() {
+      const hasPoints = measurementCoordinates.length > 0;
+      elements.measureDistanceButton.classList.toggle('active', measurementActive && measurementMode === 'distance');
+      elements.measureAreaButton.classList.toggle('active', measurementActive && measurementMode === 'area');
+      elements.measureDistanceButton.setAttribute('aria-pressed', String(measurementActive && measurementMode === 'distance'));
+      elements.measureAreaButton.setAttribute('aria-pressed', String(measurementActive && measurementMode === 'area'));
+      elements.finishMeasureButton.disabled = !measurementActive;
+      elements.undoMeasureButton.disabled = !hasPoints;
+      elements.clearMeasureButton.disabled = !hasPoints && !measurementActive;
+    }
+
+    function setMeasurementMode(mode) {
+      if (!mapReady) {
+        elements.measureHelp.textContent = 'نقشه هنوز در حال بارگذاری است؛ پس از آماده‌شدن نقشه دوباره تلاش کنید.';
+        return;
+      }
+      if (mode !== 'distance' && mode !== 'area') return;
+      measurementMode = mode;
+      measurementActive = true;
+      measurementCoordinates = [];
+      refreshMeasurementMap();
+      updateMeasurementReadout(false);
+      refreshMeasurementControls();
+      map.doubleClickZoom.disable();
+      map.getCanvas().style.cursor = 'crosshair';
+      document.querySelector('.map-wrap').classList.add('map-measuring');
+      elements.measureHelp.textContent = mode === 'distance'
+        ? 'حالت فاصله فعال است: برای تعیین مسیر روی نقشه کلیک کنید. حداقل دو نقطه لازم است؛ سپس «پایان اندازه‌گیری» را بزنید.'
+        : 'حالت مساحت فعال است: رأس‌های محدوده را به‌ترتیب روی نقشه کلیک کنید. حداقل سه نقطه لازم است؛ سپس «پایان اندازه‌گیری» را بزنید.';
+    }
+
+    function handleMeasurementMapClick(event) {
+      if (!measurementActive || !event?.lngLat) return;
+      if (measurementCoordinates.length >= MAX_MEASUREMENT_POINTS) {
+        elements.measureHelp.textContent = `حداکثر ${toPersianDigits(MAX_MEASUREMENT_POINTS)} نقطه برای هر اندازه‌گیری مجاز است.`;
+        return;
+      }
+      const longitude = Number(event.lngLat.lng);
+      const latitude = Number(event.lngLat.lat);
+      if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || Math.abs(longitude) > 180 || Math.abs(latitude) > 90) return;
+      measurementCoordinates.push([longitude, latitude]);
+      refreshMeasurementMap();
+      updateMeasurementReadout(false);
+      refreshMeasurementControls();
+    }
+
+    function finishMeasurement() {
+      if (!measurementActive) return;
+      const minimumPoints = measurementMode === 'distance' ? 2 : 3;
+      if (measurementCoordinates.length < minimumPoints) {
+        elements.measureHelp.textContent = measurementMode === 'distance'
+          ? 'برای پایان اندازه‌گیری فاصله، حداقل دو نقطه روی نقشه ثبت کنید.'
+          : 'برای پایان اندازه‌گیری مساحت، حداقل سه نقطه روی نقشه ثبت کنید.';
+        return;
+      }
+      measurementActive = false;
+      map.doubleClickZoom.enable();
+      map.getCanvas().style.cursor = '';
+      document.querySelector('.map-wrap').classList.remove('map-measuring');
+      updateMeasurementReadout(true);
+      refreshMeasurementControls();
+      elements.measureHelp.textContent = 'اندازه‌گیری ثبت شد. برای شروع یک اندازه‌گیری تازه، یکی از دو ابزار فاصله یا مساحت را دوباره انتخاب کنید.';
+    }
+
+    function undoMeasurementPoint() {
+      if (!measurementCoordinates.length) return;
+      if (!measurementActive) {
+        measurementActive = true;
+        map.doubleClickZoom.disable();
+        map.getCanvas().style.cursor = 'crosshair';
+        document.querySelector('.map-wrap').classList.add('map-measuring');
+      }
+      measurementCoordinates.pop();
+      refreshMeasurementMap();
+      updateMeasurementReadout(false);
+      refreshMeasurementControls();
+      elements.measureHelp.textContent = 'آخرین نقطه حذف شد. برای ادامه، روی نقشه کلیک کنید یا اندازه‌گیری را پایان دهید.';
+    }
+
+    function clearMeasurement() {
+      measurementActive = false;
+      measurementMode = null;
+      measurementCoordinates = [];
+      if (mapReady) {
+        refreshMeasurementMap();
+        map.doubleClickZoom.enable();
+        map.getCanvas().style.cursor = '';
+      }
+      document.querySelector('.map-wrap').classList.remove('map-measuring');
+      updateMeasurementReadout(false);
+      refreshMeasurementControls();
+      elements.measureHelp.textContent = 'فاصله: حداقل ۲ نقطه. مساحت: حداقل ۳ نقطه. برای ثبت هر رأس روی نقشه کلیک کنید؛ برای پایان از دکمهٔ «پایان اندازه‌گیری» استفاده کنید.';
+    }
+
+    elements.measureDistanceButton.addEventListener('click', () => setMeasurementMode('distance'));
+    elements.measureAreaButton.addEventListener('click', () => setMeasurementMode('area'));
+    elements.finishMeasureButton.addEventListener('click', finishMeasurement);
+    elements.undoMeasureButton.addEventListener('click', undoMeasurementPoint);
+    elements.clearMeasureButton.addEventListener('click', clearMeasurement);
+
+    // به‌روزرسانی بخش تغییر نقشه زمینه (فقط شامل سرویس‌های Esri)
+    function setBaseMap(baseMapKey) {
+      if (!mapReady) return;
+
+      const baseMaps = {
+        'esri-satellite': {
+          sourceId: 'esriSatellite',
+          layerId: 'esri-satellite-layer',
+          url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          attrib: ESRI_ATTRIBUTION,
+          help: 'تصویر ماهواره‌ای جهانی Esri فعال است. وضوح تصاویر در مناطق مختلف یکسان نیست.'
+        },
+        'esri-street': {
+          sourceId: 'esriStreet',
+          layerId: 'esri-street-layer',
+          url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+          attrib: '© Esri, HERE, Garmin, OSM contributors',
+          help: 'نقشهٔ خیابانی Esri فعال شد. این نقشه بسیار پایدار است و نیازی به مجوز اضافی ندارد.'
+        }
+      };
+
+      const selectedMap = baseMaps[baseMapKey];
+      if (!selectedMap) return;
+
+      try {
+        // ایجاد منبع (Source) و لایه (Layer) در صورت عدم وجود
+        if (!map.getSource(selectedMap.sourceId)) {
+          map.addSource(selectedMap.sourceId, {
+            type: 'raster',
+            tiles: [selectedMap.url],
+            tileSize: 256,
+            maxzoom: 19,
+            attribution: selectedMap.attrib
+          });
+          
+          // اضافه کردن لایه نقشه در زیرین‌ترین سطح (پایین لایه‌های زیرساخت)
+          map.addLayer({
+            id: selectedMap.layerId,
+            type: 'raster',
+            source: selectedMap.sourceId,
+            paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 }
+          }, 'oim-power-lines');
+        }
+
+        // پنهان کردن تمام نقشه‌های زمینه
+        Object.values(baseMaps).forEach(bm => {
+          if (map.getLayer(bm.layerId)) {
+            map.setLayoutProperty(bm.layerId, 'visibility', 'none');
+          }
+        });
+
+        // نمایش نقشه انتخابی کاربر
+        map.setLayoutProperty(selectedMap.layerId, 'visibility', 'visible');
+        elements.baseMapHelp.textContent = selectedMap.help;
+
+      } catch (error) {
+        console.error('خطا در تغییر نقشه زمینه:', error);
+        setStatus('خطا در بارگذاری نقشهٔ انتخابی.', 'warning');
+      }
+    }
+
+    function toggleInfrastructureGroup(group, visible) {
+      if (!mapReady || !groupLayerIds[group]) return;
+      const visibility = visible ? 'visible' : 'none';
+      for (const layerId of groupLayerIds[group]) {
+        if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', visibility);
+      }
+    }
+
+    function getLocalName(node) {
+      return (node?.localName || node?.nodeName || '').split(':').pop();
+    }
+
+    function directChildrenByName(node, name) {
+      return Array.from(node?.children || []).filter(child => getLocalName(child) === name);
+    }
+
+    function firstDirectChild(node, name) {
+      return directChildrenByName(node, name)[0] || null;
+    }
+
+    function descendantsByName(node, name) {
+      return Array.from(node?.getElementsByTagName('*') || []).filter(child => getLocalName(child) === name);
+    }
+
+    function firstDescendant(node, name) {
+      return descendantsByName(node, name)[0] || null;
+    }
+
+    function textOf(node) {
+      return node ? String(node.textContent || '').trim() : '';
+    }
+
+    function parseKmlCoordinateText(text, commaSeparated = true) {
+      const positions = [];
+      const tokens = String(text || '').trim().split(/\s+/).filter(Boolean);
+      for (const token of tokens) {
+        const parts = commaSeparated ? token.split(',') : token.split(/\s+/);
+        if (parts.length < 2) continue;
+        const longitude = Number(parts[0]);
+        const latitude = Number(parts[1]);
+        const altitude = parts.length > 2 ? Number(parts[2]) : NaN;
+        if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) continue;
+        if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) continue;
+        positions.push(Number.isFinite(altitude) ? [longitude, latitude, altitude] : [longitude, latitude]);
+      }
+      return positions;
+    }
+
+    function parseGeometryElement(element) {
+      const kind = getLocalName(element);
+      if (kind === 'Point') {
+        const coordinates = firstDescendant(element, 'coordinates');
+        const positions = parseKmlCoordinateText(textOf(coordinates));
+        return positions.length ? [{ type: 'Point', coordinates: positions[0] }] : [];
+      }
+
+      if (kind === 'LineString' || kind === 'LinearRing') {
+        const coordinates = firstDescendant(element, 'coordinates');
+        const positions = parseKmlCoordinateText(textOf(coordinates));
+        return positions.length >= 2 ? [{ type: 'LineString', coordinates: positions }] : [];
+      }
+
+      if (kind === 'Polygon') {
+        const rings = [];
+        for (const boundaryName of ['outerBoundaryIs', 'innerBoundaryIs']) {
+          for (const boundary of descendantsByName(element, boundaryName)) {
+            const ring = firstDescendant(boundary, 'LinearRing');
+            const coordinates = firstDescendant(ring || boundary, 'coordinates');
+            const positions = parseKmlCoordinateText(textOf(coordinates));
+            if (positions.length >= 3) {
+              const first = positions[0];
+              const last = positions[positions.length - 1];
+              if (first[0] !== last[0] || first[1] !== last[1]) positions.push([...first]);
+              if (positions.length >= 4) rings.push(positions);
+            }
+          }
+        }
+        if (!rings.length) {
+          const coordinates = firstDescendant(element, 'coordinates');
+          const positions = parseKmlCoordinateText(textOf(coordinates));
+          if (positions.length >= 3) {
+            const first = positions[0];
+            const last = positions[positions.length - 1];
+            if (first[0] !== last[0] || first[1] !== last[1]) positions.push([...first]);
+            if (positions.length >= 4) rings.push(positions);
+          }
+        }
+        return rings.length ? [{ type: 'Polygon', coordinates: rings }] : [];
+      }
+
+      if (kind === 'MultiGeometry' || kind === 'MultiTrack') {
+        const geometries = [];
+        for (const child of Array.from(element.children || [])) geometries.push(...parseGeometryElement(child));
+        return geometries;
+      }
+
+      if (kind === 'Track') {
+        const positions = descendantsByName(element, 'coord')
+          .map(node => parseKmlCoordinateText(textOf(node), false)[0])
+          .filter(Boolean);
+        return positions.length >= 2 ? [{ type: 'LineString', coordinates: positions }] : [];
+      }
+
+      return [];
+    }
+
+    function readPlacemarkProperties(placemark) {
+      const properties = {};
+      const name = textOf(firstDirectChild(placemark, 'name'));
+      const description = textOf(firstDirectChild(placemark, 'description'));
+      const styleUrl = textOf(firstDirectChild(placemark, 'styleUrl'));
+      if (name) properties.name = name;
+      if (description) properties.description = description;
+      if (styleUrl) properties.styleUrl = styleUrl;
+
+      const extendedData = firstDirectChild(placemark, 'ExtendedData');
+      if (extendedData) {
+        for (const dataNode of descendantsByName(extendedData, 'Data')) {
+          const key = dataNode.getAttribute('name');
+          const value = textOf(firstDirectChild(dataNode, 'value'));
+          if (key) properties[key] = value;
+        }
+        for (const simpleDataNode of descendantsByName(extendedData, 'SimpleData')) {
+          const key = simpleDataNode.getAttribute('name');
+          if (key) properties[key] = textOf(simpleDataNode);
+        }
+      }
+      return properties;
+    }
+
+    function parseKmlDocument(kmlText) {
+      if (kmlText.length > MAX_KML_CHARS) throw new Error('حجم محتوای KML از حد مجاز ۵۰ مگابایت بیشتر است.');
+      if (/<!DOCTYPE/i.test(kmlText)) throw new Error('فایل KML شامل DOCTYPE است و برای ایمنی پردازش نشد.');
+
+      const xml = new DOMParser().parseFromString(kmlText, 'application/xml');
+      if (descendantsByName(xml, 'parsererror').length || getLocalName(xml.documentElement) === 'parsererror') {
+        throw new Error('ساختار XML داخل فایل KMZ معتبر نیست.');
+      }
+
+      const placemarks = descendantsByName(xml, 'Placemark');
+      const features = [];
+      let pointCount = 0;
+      let lineCount = 0;
+      let polygonCount = 0;
+      let placemarkIndex = 0;
+
+      for (const placemark of placemarks) {
+        placemarkIndex++;
+        const properties = readPlacemarkProperties(placemark);
+        const geometryContainers = Array.from(placemark.children || []).filter(child => {
+          return ['Point', 'LineString', 'LinearRing', 'Polygon', 'MultiGeometry', 'Track', 'MultiTrack'].includes(getLocalName(child));
+        });
+        let geometryIndex = 0;
+        for (const container of geometryContainers) {
+          const geometries = parseGeometryElement(container);
+          for (const geometry of geometries) {
+            if (geometry.type === 'Point') pointCount++;
+            else if (geometry.type === 'LineString') lineCount++;
+            else if (geometry.type === 'Polygon') polygonCount++;
+            geometryIndex++;
+            features.push({
+              type: 'Feature',
+              id: `placemark-${placemarkIndex}-${geometryIndex}`,
+              properties: { ...properties },
+              geometry
+            });
+          }
+        }
+      }
+
+      if (!features.length) throw new Error('هیچ عارضهٔ مکانی معتبر (Point، LineString یا Polygon) در KML پیدا نشد.');
+      return {
+        geojson: { type: 'FeatureCollection', features },
+        counts: { points: pointCount, lines: lineCount, polygons: polygonCount }
+      };
+    }
+
+    function collectBounds(featureCollection) {
+      const bounds = new maplibregl.LngLatBounds();
+      let coordinateCount = 0;
+      function visit(value) {
+        if (!Array.isArray(value)) return;
+        if (value.length >= 2 && typeof value[0] === 'number' && typeof value[1] === 'number') {
+          const [longitude, latitude] = value;
+          if (Number.isFinite(longitude) && Number.isFinite(latitude) && longitude >= -180 && longitude <= 180 && latitude >= -90 && latitude <= 90) {
+            bounds.extend([longitude, latitude]);
+            coordinateCount++;
+          }
+          return;
+        }
+        for (const child of value) visit(child);
+      }
+      for (const feature of featureCollection.features) visit(feature.geometry.coordinates);
+      return coordinateCount > 0 ? bounds : null;
+    }
+
+    function removeKmzFromMap() {
+      if (!mapReady) return;
+      for (const layerId of kmzLayerIds) if (map.getLayer(layerId)) map.removeLayer(layerId);
+      if (map.getSource('kmz-source')) map.removeSource('kmz-source');
+    }
+
+    function addKmzToMap(featureCollection) {
+      removeKmzFromMap();
+      map.addSource('kmz-source', { type: 'geojson', data: featureCollection, promoteId: 'id' });
+      map.addLayer({
+        id: 'kmz-polygons', type: 'fill', source: 'kmz-source', filter: ['==', '$type', 'Polygon'],
+        paint: { 'fill-color': '#18a5a0', 'fill-opacity': 0.28 }
+      });
+      map.addLayer({
+        id: 'kmz-polygon-outline', type: 'line', source: 'kmz-source', filter: ['==', '$type', 'Polygon'],
+        paint: { 'line-color': '#087b78', 'line-width': 2.2 }
+      });
+      map.addLayer({
+        id: 'kmz-lines', type: 'line', source: 'kmz-source', filter: ['==', '$type', 'LineString'],
+        paint: { 'line-color': '#1769d2', 'line-width': 3, 'line-opacity': 0.96 }
+      });
+      map.addLayer({
+        id: 'kmz-points', type: 'circle', source: 'kmz-source', filter: ['==', '$type', 'Point'],
+        paint: { 'circle-radius': 6, 'circle-color': '#f08a24', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.6 }
+      });
+      map.addLayer({
+        id: 'kmz-point-labels', type: 'symbol', source: 'kmz-source', filter: ['all', ['==', '$type', 'Point'], ['has', 'name']],
+        layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-allow-overlap': false },
+        paint: { 'text-color': '#17324d', 'text-halo-color': '#ffffff', 'text-halo-width': 1.4 }
+      });
+      for (const layerId of kmzLayerIds) map.setLayoutProperty(layerId, 'visibility', elements.kmzVisibility.checked ? 'visible' : 'none');
+      installKmzPopupHandlers();
+    }
+
+    function createPopupContent(properties) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'popup-card';
+      const title = document.createElement('div');
+      title.className = 'popup-title';
+      title.textContent = properties.name || 'عارضهٔ بدون نام';
+      wrapper.appendChild(title);
+
+      const entries = Object.entries(properties).filter(([key]) => key !== 'name');
+      if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'popup-empty';
+        empty.textContent = 'اطلاعات تکمیلی برای این عارضه ثبت نشده است.';
+        wrapper.appendChild(empty);
+      } else {
+        for (const [key, rawValue] of entries) {
+          const row = document.createElement('div');
+          row.className = 'popup-row';
+          const keyNode = document.createElement('div');
+          keyNode.className = 'popup-key';
+          keyNode.textContent = key;
+          const valueNode = document.createElement('div');
+          valueNode.className = 'popup-value';
+          valueNode.textContent = String(rawValue ?? '');
+          row.append(keyNode, valueNode);
+          wrapper.appendChild(row);
+        }
+      }
+      return wrapper;
+    }
+
+    function installKmzPopupHandlers() {
+      if (popupHandlersInstalled) return;
+      popupHandlersInstalled = true;
+      for (const layerId of ['kmz-polygons', 'kmz-polygon-outline', 'kmz-lines', 'kmz-points']) {
+        map.on('click', layerId, event => {
+          if (measurementActive) return;
+          const feature = event.features?.[0];
+          if (!feature) return;
+          new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px' })
+            .setLngLat(event.lngLat)
+            .setDOMContent(createPopupContent(feature.properties || {}))
+            .addTo(map);
+        });
+        map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
+      }
+    }
+
+
+    async function loadKmzFile(file) {
+      if (!file) return;
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      if (extension !== 'kmz') {
+        setStatus('فقط فایل با پسوند KMZ قابل بارگذاری است.', 'error');
+        return;
+      }
+      if (file.size <= 0 || file.size > MAX_FILE_BYTES) {
+        setStatus(`حجم فایل باید بیشتر از صفر و حداکثر ${formatBytes(MAX_FILE_BYTES)} باشد.`, 'error');
+        return;
+      }
+      if (!window.JSZip) {
+        setStatus('کتابخانهٔ JSZip بارگذاری نشده است. اتصال اینترنت و دسترسی به CDN را بررسی کنید.', 'error');
+        return;
+      }
+
+      setBusy(true);
+      setStatus('در حال باز کردن آرشیو KMZ و خواندن فایل KML…', 'info');
+
+      try {
+        const archive = await window.JSZip.loadAsync(file, { checkCRC32: false, createFolders: false });
+        const entries = Object.values(archive.files).filter(entry => !entry.dir);
+        if (!entries.length || entries.length > 2000) throw new Error('تعداد فایل‌های داخل آرشیو خالی یا بیش از حد مجاز است.');
+
+        let declaredUncompressedSize = 0;
+        for (const entry of entries) {
+          const size = Number(entry?._data?.uncompressedSize);
+          if (Number.isFinite(size) && size > 0) declaredUncompressedSize += size;
+          if (declaredUncompressedSize > MAX_UNCOMPRESSED_BYTES) {
+            throw new Error('حجم بازشدهٔ آرشیو از سقف ایمنی ۳۰۰ مگابایت بیشتر است.');
+          }
+        }
+
+        const kmlEntries = entries.filter(entry => /\.kml$/i.test(entry.name));
+        if (!kmlEntries.length) throw new Error('هیچ فایل KML در آرشیو KMZ پیدا نشد.');
+        kmlEntries.sort((a, b) => {
+          const aDoc = /(^|\/)doc\.kml$/i.test(a.name) ? 0 : 1;
+          const bDoc = /(^|\/)doc\.kml$/i.test(b.name) ? 0 : 1;
+          return aDoc - bDoc || a.name.localeCompare(b.name);
+        });
+
+        const kmlText = await kmlEntries[0].async('string');
+        const result = parseKmlDocument(kmlText);
+        const bounds = collectBounds(result.geojson);
+        if (!bounds) throw new Error('مختصات جغرافیایی معتبر در فایل پیدا نشد.');
+        if (!mapReady) await new Promise(resolve => map.once('load', resolve));
+
+        currentGeoJson = result.geojson;
+        currentBounds = bounds;
+        currentFile = file;
+        addKmzToMap(currentGeoJson);
+
+        elements.fileName.textContent = file.name;
+        elements.fileSize.textContent = `${formatBytes(file.size)} · ${toPersianDigits(result.geojson.features.length)} عارضه`;
+        elements.pointCount.textContent = toPersianDigits(result.counts.points);
+        elements.lineCount.textContent = toPersianDigits(result.counts.lines);
+        elements.polygonCount.textContent = toPersianDigits(result.counts.polygons);
+        elements.fileCard.classList.add('show');
+        elements.kmzVisibility.disabled = false;
+        elements.kmzVisibility.checked = true;
+        elements.kmzLayerStatus.textContent = 'فعال';
+        elements.fitButton.disabled = false;
+        elements.removeButton.disabled = false;
+        fitKmzBounds();
+        setStatus(`فایل با موفقیت پردازش شد. فایل KML انتخاب‌شده: ${kmlEntries[0].name}`, 'success');
+      } catch (error) {
+        console.error('KMZ processing error:', error);
+        setStatus(error instanceof Error ? error.message : 'پردازش فایل KMZ ناموفق بود.', 'error');
+      } finally {
+        setBusy(false);
+        elements.fileInput.value = '';
+      }
+    }
+
+    function fitKmzBounds() {
+      if (!currentBounds || !mapReady) return;
+      const sw = currentBounds.getSouthWest();
+      const ne = currentBounds.getNorthEast();
+      if (Math.abs(sw.lng - ne.lng) < 1e-10 && Math.abs(sw.lat - ne.lat) < 1e-10) {
+        map.flyTo({ center: [sw.lng, sw.lat], zoom: 15, duration: 900 });
+      } else {
+        map.fitBounds(currentBounds, { padding: 55, maxZoom: 16, duration: 900 });
+      }
+    }
+
+    function clearKmzLayer() {
+      removeKmzFromMap();
+      currentGeoJson = null;
+      currentBounds = null;
+      currentFile = null;
+      elements.fileCard.classList.remove('show');
+      elements.kmzVisibility.checked = true;
+      elements.kmzVisibility.disabled = true;
+      elements.kmzLayerStatus.textContent = 'غیرفعال';
+      elements.fitButton.disabled = true;
+      elements.removeButton.disabled = true;
+      elements.pointCount.textContent = '۰';
+      elements.lineCount.textContent = '۰';
+      elements.polygonCount.textContent = '۰';
+      setStatus('لایهٔ KMZ از نقشه حذف شد.', 'info');
+    }
+
+    elements.fileInput.addEventListener('change', event => loadKmzFile(event.target.files?.[0]));
+    elements.dropZone.addEventListener('dragover', event => {
+      event.preventDefault();
+      elements.dropZone.classList.add('drag-over');
+    });
+    elements.dropZone.addEventListener('dragleave', event => {
+      if (!elements.dropZone.contains(event.relatedTarget)) elements.dropZone.classList.remove('drag-over');
+    });
+    elements.dropZone.addEventListener('drop', event => {
+      event.preventDefault();
+      elements.dropZone.classList.remove('drag-over');
+      loadKmzFile(event.dataTransfer?.files?.[0]);
+    });
+
+    elements.kmzVisibility.addEventListener('change', () => {
+      const visibility = elements.kmzVisibility.checked ? 'visible' : 'none';
+      for (const layerId of kmzLayerIds) if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', visibility);
+      elements.kmzLayerStatus.textContent = elements.kmzVisibility.checked ? 'فعال' : 'مخفی';
+    });
+    elements.fitButton.addEventListener('click', fitKmzBounds);
+    elements.removeButton.addEventListener('click', clearKmzLayer);
+    elements.worldButton.addEventListener('click', () => map.flyTo({ center: [0, 20], zoom: 2, duration: 700 }));
+    elements.homeButton.addEventListener('click', () => map.flyTo({ center: [0, 20], zoom: 2, bearing: 0, pitch: 0, duration: 700 }));
+
+    if ('ResizeObserver' in window) {
+      const resizeObserver = new ResizeObserver(() => map.resize());
+      resizeObserver.observe(document.querySelector('.map-wrap'));
+    } else {
+      window.addEventListener('resize', () => map.resize());
+    }
+  </script>
+</body>
+</html>
