@@ -135,6 +135,7 @@
       border-color: var(--primary);
       background: var(--primary-soft);
     }
+    .drop-zone[aria-busy="true"] { opacity: .65; cursor: wait; pointer-events: none; }
     .drop-icon {
       display: grid;
       place-items: center;
@@ -186,6 +187,17 @@
       background: var(--surface);
     }
     .file-card.show { display: block; }
+    .kmz-files-container { display: grid; gap: 9px; margin-top: 10px; }
+    .kmz-empty-state { padding: 12px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); background: #fbfdff; text-align: center; font-size: 10px; line-height: 1.8; }
+    .kmz-global-actions { margin-top: 10px; }
+    .kmz-global-actions[hidden] { display: none; }
+    .kmz-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+    .kmz-card-top .file-meta { min-width: 0; }
+    .kmz-visibility-label { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; color: #40536a; font-size: 10px; white-space: nowrap; }
+    .kmz-visibility-label input { width: 15px; height: 15px; margin: 0; accent-color: var(--primary); }
+    .kmz-color-dot { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; }
+    .kmz-slot-name { color: var(--muted); font-size: 9px; margin-bottom: 3px; }
+    .kmz-file-card .file-actions .btn { flex: 1 1 100px; }
     .file-head { display: flex; align-items: flex-start; gap: 9px; }
     .file-badge {
       width: 34px; height: 34px; flex: 0 0 34px;
@@ -391,29 +403,17 @@
           <label class="drop-zone" id="dropZone" for="kmzFile">
             <span class="drop-icon" aria-hidden="true">⇧</span>
             <span class="drop-title">فایل را اینجا رها کنید یا انتخاب نمایید</span>
-            <span class="drop-subtitle">فرمت مجاز: KMZ · حداکثر حجم فایل: ۸۰ مگابایت</span>
-            <input id="kmzFile" type="file" accept=".kmz,application/vnd.google-earth.kmz,application/zip" aria-label="انتخاب فایل KMZ">
+            <span class="drop-subtitle">حداکثر ۲ فایل KMZ · حداکثر حجم هر فایل: ۸۰ مگابایت · امکان انتخاب هم‌زمان</span>
+            <input id="kmzFile" type="file" accept=".kmz,application/vnd.google-earth.kmz,application/zip" multiple aria-label="انتخاب حداکثر دو فایل KMZ">
           </label>
           <div class="progress-track" id="progressTrack" aria-hidden="true"><div class="progress-bar"></div></div>
           <div class="status-box" id="statusBox" role="status" aria-live="polite"></div>
 
-          <div class="file-card" id="fileCard">
-            <div class="file-head">
-              <div class="file-badge">KMZ</div>
-              <div class="file-meta">
-                <div class="file-name" id="fileName">—</div>
-                <div class="file-size" id="fileSize">—</div>
-              </div>
-            </div>
-            <div class="stats-grid" aria-label="آمار عوارض فایل">
-              <div class="stat-box"><span class="stat-value" id="pointCount">۰</span><span class="stat-label">نقطه</span></div>
-              <div class="stat-box"><span class="stat-value" id="lineCount">۰</span><span class="stat-label">خط</span></div>
-              <div class="stat-box"><span class="stat-value" id="polygonCount">۰</span><span class="stat-label">پلیگون</span></div>
-            </div>
-            <div class="file-actions">
-              <button class="btn btn-primary" id="fitButton" type="button">⌖ نمایش محدوده</button>
-              <button class="btn btn-light" id="removeButton" type="button">حذف لایه</button>
-            </div>
+          <div class="button-row kmz-global-actions" id="kmzGlobalActions" hidden>
+            <button class="btn btn-primary btn-block" id="fitAllKmzButton" type="button">⌖ نمایش محدودهٔ هر دو فایل</button>
+          </div>
+          <div class="kmz-files-container" id="kmzFilesContainer" aria-live="polite">
+            <div class="kmz-empty-state">هنوز فایلی بارگذاری نشده است.</div>
           </div>
         </section>
 
@@ -449,13 +449,8 @@
         </section>
 
         <section class="section" aria-labelledby="kmzLayerHeading">
-          <h2 class="section-heading" id="kmzLayerHeading"><span>۴. کنترل لایهٔ KMZ</span></h2>
-          <label class="layer-item">
-            <input type="checkbox" id="kmzVisibility" checked disabled>
-            <span class="layer-swatch" style="height:4px;background:#1769aa"></span>
-            <span class="layer-title">نمایش عوارض فایل بارگذاری‌شده</span>
-            <span class="layer-type" id="kmzLayerStatus">غیرفعال</span>
-          </label>
+          <h2 class="section-heading" id="kmzLayerHeading"><span>۴. کنترل لایه‌های KMZ</span><span class="hint">کنترل مستقل هر فایل</span></h2>
+          <div class="base-map-help">هر فایل به‌صورت یک لایهٔ مستقل روی نقشه نمایش داده می‌شود. خاموش‌کردن یا حذف یک لایه، فایل دیگر را تغییر نمی‌دهد.</div>
         </section>
 
         <section class="section" aria-labelledby="measurementHeading">
@@ -543,12 +538,15 @@
       otherPipeline: ['oim-other-pipelines']
     };
 
-    const kmzLayerIds = ['kmz-polygons', 'kmz-polygon-outline', 'kmz-lines', 'kmz-points', 'kmz-point-labels'];
-    let currentGeoJson = null;
-    let currentBounds = null;
-    let currentFile = null;
+    const KMZ_SLOT_IDS = [1, 2];
+    const kmzFiles = new Map();
+    const kmzPopupHandlersInstalled = new Set();
+    let kmzUploadInProgress = false;
+    const kmzStyles = {
+      1: { polygon: '#18a5a0', polygonOutline: '#087b78', line: '#1769d2', point: '#f08a24' },
+      2: { polygon: '#a78bfa', polygonOutline: '#6d28d9', line: '#db2777', point: '#f59e0b' }
+    };
     let mapReady = false;
-    let popupHandlersInstalled = false;
     let measurementMode = null; // 'distance' | 'area'
     let measurementActive = false;
     let measurementCoordinates = [];
@@ -563,16 +561,9 @@
       dropZone: document.getElementById('dropZone'),
       statusBox: document.getElementById('statusBox'),
       progressTrack: document.getElementById('progressTrack'),
-      fileCard: document.getElementById('fileCard'),
-      fileName: document.getElementById('fileName'),
-      fileSize: document.getElementById('fileSize'),
-      pointCount: document.getElementById('pointCount'),
-      lineCount: document.getElementById('lineCount'),
-      polygonCount: document.getElementById('polygonCount'),
-      fitButton: document.getElementById('fitButton'),
-      removeButton: document.getElementById('removeButton'),
-      kmzVisibility: document.getElementById('kmzVisibility'),
-      kmzLayerStatus: document.getElementById('kmzLayerStatus'),
+      kmzFilesContainer: document.getElementById('kmzFilesContainer'),
+      kmzGlobalActions: document.getElementById('kmzGlobalActions'),
+      fitAllKmzButton: document.getElementById('fitAllKmzButton'),
       worldButton: document.getElementById('worldButton'),
       homeButton: document.getElementById('homeButton'),
       locateMeButton: document.getElementById('locateMeButton'),
@@ -598,8 +589,7 @@
     function setBusy(isBusy) {
       elements.progressTrack.classList.toggle('show', isBusy);
       elements.fileInput.disabled = isBusy;
-      elements.fitButton.disabled = isBusy || !currentBounds;
-      elements.removeButton.disabled = isBusy || !currentGeoJson;
+      elements.dropZone.setAttribute('aria-busy', String(isBusy));
     }
 
     function formatBytes(bytes) {
@@ -770,7 +760,6 @@
       initializeMeasurementLayer();
       initializeUserLocationLayer();
       refreshMeasurementControls();
-      elements.kmzVisibility.disabled = true;
       document.querySelectorAll('[data-group]').forEach(input => {
         input.addEventListener('change', () => toggleInfrastructureGroup(input.dataset.group, input.checked));
       });
@@ -1432,38 +1421,62 @@
       return coordinateCount > 0 ? bounds : null;
     }
 
-    function removeKmzFromMap() {
-      if (!mapReady) return;
-      for (const layerId of kmzLayerIds) if (map.getLayer(layerId)) map.removeLayer(layerId);
-      if (map.getSource('kmz-source')) map.removeSource('kmz-source');
+    function getKmzLayerIds(slotId) {
+      return [
+        `kmz-${slotId}-polygons`,
+        `kmz-${slotId}-polygon-outline`,
+        `kmz-${slotId}-lines`,
+        `kmz-${slotId}-points`,
+        `kmz-${slotId}-point-labels`
+      ];
     }
 
-    function addKmzToMap(featureCollection) {
-      removeKmzFromMap();
-      map.addSource('kmz-source', { type: 'geojson', data: featureCollection, promoteId: 'id' });
+    function getKmzSourceId(slotId) {
+      return `kmz-${slotId}-source`;
+    }
+
+    function removeKmzFromMap(slotId) {
+      if (!mapReady) return;
+      for (const layerId of getKmzLayerIds(slotId).reverse()) {
+        if (map.getLayer(layerId)) map.removeLayer(layerId);
+      }
+      const sourceId = getKmzSourceId(slotId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+    }
+
+    function addKmzToMap(slotId, featureCollection, visible = true) {
+      const sourceId = getKmzSourceId(slotId);
+      const layerIds = getKmzLayerIds(slotId);
+      const colors = kmzStyles[slotId];
+      removeKmzFromMap(slotId);
+
+      map.addSource(sourceId, { type: 'geojson', data: featureCollection, promoteId: 'id' });
       map.addLayer({
-        id: 'kmz-polygons', type: 'fill', source: 'kmz-source', filter: ['==', '$type', 'Polygon'],
-        paint: { 'fill-color': '#18a5a0', 'fill-opacity': 0.28 }
+        id: layerIds[0], type: 'fill', source: sourceId, filter: ['==', '$type', 'Polygon'],
+        layout: { visibility: visible ? 'visible' : 'none' },
+        paint: { 'fill-color': colors.polygon, 'fill-opacity': 0.28 }
       });
       map.addLayer({
-        id: 'kmz-polygon-outline', type: 'line', source: 'kmz-source', filter: ['==', '$type', 'Polygon'],
-        paint: { 'line-color': '#087b78', 'line-width': 2.2 }
+        id: layerIds[1], type: 'line', source: sourceId, filter: ['==', '$type', 'Polygon'],
+        layout: { visibility: visible ? 'visible' : 'none' },
+        paint: { 'line-color': colors.polygonOutline, 'line-width': 2.2 }
       });
       map.addLayer({
-        id: 'kmz-lines', type: 'line', source: 'kmz-source', filter: ['==', '$type', 'LineString'],
-        paint: { 'line-color': '#1769d2', 'line-width': 3, 'line-opacity': 0.96 }
+        id: layerIds[2], type: 'line', source: sourceId, filter: ['==', '$type', 'LineString'],
+        layout: { visibility: visible ? 'visible' : 'none' },
+        paint: { 'line-color': colors.line, 'line-width': 3, 'line-opacity': 0.96 }
       });
       map.addLayer({
-        id: 'kmz-points', type: 'circle', source: 'kmz-source', filter: ['==', '$type', 'Point'],
-        paint: { 'circle-radius': 6, 'circle-color': '#f08a24', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.6 }
+        id: layerIds[3], type: 'circle', source: sourceId, filter: ['==', '$type', 'Point'],
+        layout: { visibility: visible ? 'visible' : 'none' },
+        paint: { 'circle-radius': 6, 'circle-color': colors.point, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.6 }
       });
       map.addLayer({
-        id: 'kmz-point-labels', type: 'symbol', source: 'kmz-source', filter: ['all', ['==', '$type', 'Point'], ['has', 'name']],
-        layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-allow-overlap': false },
+        id: layerIds[4], type: 'symbol', source: sourceId, filter: ['all', ['==', '$type', 'Point'], ['has', 'name']],
+        layout: { visibility: visible ? 'visible' : 'none', 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-allow-overlap': false },
         paint: { 'text-color': '#17324d', 'text-halo-color': '#ffffff', 'text-halo-width': 1.4 }
       });
-      for (const layerId of kmzLayerIds) map.setLayoutProperty(layerId, 'visibility', elements.kmzVisibility.checked ? 'visible' : 'none');
-      installKmzPopupHandlers();
+      installKmzPopupHandlers(slotId);
     }
 
     function createPopupContent(properties) {
@@ -1497,10 +1510,12 @@
       return wrapper;
     }
 
-    function installKmzPopupHandlers() {
-      if (popupHandlersInstalled) return;
-      popupHandlersInstalled = true;
-      for (const layerId of ['kmz-polygons', 'kmz-polygon-outline', 'kmz-lines', 'kmz-points']) {
+    function installKmzPopupHandlers(slotId) {
+      if (kmzPopupHandlersInstalled.has(slotId)) return;
+      kmzPopupHandlersInstalled.add(slotId);
+
+      const clickableLayers = getKmzLayerIds(slotId).slice(0, 4);
+      for (const layerId of clickableLayers) {
         map.on('click', layerId, event => {
           if (measurementActive) return;
           const feature = event.features?.[0];
@@ -1511,114 +1526,258 @@
             .addTo(map);
         });
         map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer'; });
-        map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
+        map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = measurementActive ? 'crosshair' : ''; });
       }
     }
 
-
-    async function loadKmzFile(file) {
-      if (!file) return;
+    async function loadKmzFile(file, slotId) {
       const extension = file.name.split('.').pop()?.toLowerCase();
-      if (extension !== 'kmz') {
-        setStatus('فقط فایل با پسوند KMZ قابل بارگذاری است.', 'error');
-        return;
-      }
+      if (extension !== 'kmz') throw new Error(`«${file.name}» فایل KMZ نیست.`);
       if (file.size <= 0 || file.size > MAX_FILE_BYTES) {
-        setStatus(`حجم فایل باید بیشتر از صفر و حداکثر ${formatBytes(MAX_FILE_BYTES)} باشد.`, 'error');
-        return;
+        throw new Error(`حجم فایل «${file.name}» باید بیشتر از صفر و حداکثر ${formatBytes(MAX_FILE_BYTES)} باشد.`);
       }
       if (!window.JSZip) {
-        setStatus('کتابخانهٔ JSZip بارگذاری نشده است. اتصال اینترنت و دسترسی به CDN را بررسی کنید.', 'error');
+        throw new Error('کتابخانهٔ JSZip بارگذاری نشده است. اتصال اینترنت و دسترسی به CDN را بررسی کنید.');
+      }
+
+      const archive = await window.JSZip.loadAsync(file, { checkCRC32: false, createFolders: false });
+      const entries = Object.values(archive.files).filter(entry => !entry.dir);
+      if (!entries.length || entries.length > 2000) throw new Error(`تعداد فایل‌های داخل آرشیو «${file.name}» خالی یا بیش از حد مجاز است.`);
+
+      let declaredUncompressedSize = 0;
+      for (const entry of entries) {
+        const size = Number(entry?._data?.uncompressedSize);
+        if (Number.isFinite(size) && size > 0) declaredUncompressedSize += size;
+        if (declaredUncompressedSize > MAX_UNCOMPRESSED_BYTES) {
+          throw new Error(`حجم بازشدهٔ آرشیو «${file.name}» از سقف ایمنی ۳۰۰ مگابایت بیشتر است.`);
+        }
+      }
+
+      const kmlEntries = entries.filter(entry => /\.kml$/i.test(entry.name));
+      if (!kmlEntries.length) throw new Error(`هیچ فایل KML در آرشیو «${file.name}» پیدا نشد.`);
+      kmlEntries.sort((a, b) => {
+        const aDoc = /(^|\/)doc\.kml$/i.test(a.name) ? 0 : 1;
+        const bDoc = /(^|\/)doc\.kml$/i.test(b.name) ? 0 : 1;
+        return aDoc - bDoc || a.name.localeCompare(b.name);
+      });
+
+      const kmlText = await kmlEntries[0].async('string');
+      const result = parseKmlDocument(kmlText);
+      const bounds = collectBounds(result.geojson);
+      if (!bounds) throw new Error(`مختصات جغرافیایی معتبر در فایل «${file.name}» پیدا نشد.`);
+      if (!mapReady) await new Promise(resolve => map.once('load', resolve));
+
+      const fileRecord = {
+        slotId,
+        fileName: file.name,
+        fileSize: file.size,
+        featureCount: result.geojson.features.length,
+        counts: result.counts,
+        geojson: result.geojson,
+        bounds,
+        visible: true,
+        kmlEntryName: kmlEntries[0].name
+      };
+
+      kmzFiles.set(slotId, fileRecord);
+      addKmzToMap(slotId, fileRecord.geojson, fileRecord.visible);
+      renderKmzFileCards();
+      fitKmzBounds(slotId);
+      return fileRecord;
+    }
+
+    async function handleKmzFiles(fileList) {
+      const selectedFiles = Array.from(fileList || []);
+      if (!selectedFiles.length) return;
+      if (kmzUploadInProgress) {
+        setStatus('پردازش فایل‌های قبلی هنوز تمام نشده است؛ پس از پایان آن دوباره تلاش کنید.', 'warning');
         return;
       }
 
+      const occupiedCount = kmzFiles.size;
+      if (occupiedCount >= KMZ_SLOT_IDS.length) {
+        setStatus('هر دو جایگاه KMZ پر هستند. ابتدا یکی از فایل‌ها را حذف کنید.', 'warning');
+        elements.fileInput.value = '';
+        return;
+      }
+
+      kmzUploadInProgress = true;
       setBusy(true);
-      setStatus('در حال باز کردن آرشیو KMZ و خواندن فایل KML…', 'info');
+      const reservedSlots = new Set();
+      const failures = [];
+      let loadedCount = 0;
+      let skippedCount = 0;
+      setStatus('در حال پردازش فایل‌های KMZ…', 'info');
 
       try {
-        const archive = await window.JSZip.loadAsync(file, { checkCRC32: false, createFolders: false });
-        const entries = Object.values(archive.files).filter(entry => !entry.dir);
-        if (!entries.length || entries.length > 2000) throw new Error('تعداد فایل‌های داخل آرشیو خالی یا بیش از حد مجاز است.');
+        for (const file of selectedFiles) {
+          const slotId = KMZ_SLOT_IDS.find(id => !kmzFiles.has(id) && !reservedSlots.has(id));
+          if (!slotId) {
+            skippedCount++;
+            continue;
+          }
 
-        let declaredUncompressedSize = 0;
-        for (const entry of entries) {
-          const size = Number(entry?._data?.uncompressedSize);
-          if (Number.isFinite(size) && size > 0) declaredUncompressedSize += size;
-          if (declaredUncompressedSize > MAX_UNCOMPRESSED_BYTES) {
-            throw new Error('حجم بازشدهٔ آرشیو از سقف ایمنی ۳۰۰ مگابایت بیشتر است.');
+          reservedSlots.add(slotId);
+          try {
+            const record = await loadKmzFile(file, slotId);
+            loadedCount++;
+          } catch (error) {
+            reservedSlots.delete(slotId);
+            console.error(`KMZ processing error (${file?.name || 'unknown'}):`, error);
+            failures.push(error instanceof Error ? error.message : `پردازش فایل «${file.name}» ناموفق بود.`);
           }
         }
-
-        const kmlEntries = entries.filter(entry => /\.kml$/i.test(entry.name));
-        if (!kmlEntries.length) throw new Error('هیچ فایل KML در آرشیو KMZ پیدا نشد.');
-        kmlEntries.sort((a, b) => {
-          const aDoc = /(^|\/)doc\.kml$/i.test(a.name) ? 0 : 1;
-          const bDoc = /(^|\/)doc\.kml$/i.test(b.name) ? 0 : 1;
-          return aDoc - bDoc || a.name.localeCompare(b.name);
-        });
-
-        const kmlText = await kmlEntries[0].async('string');
-        const result = parseKmlDocument(kmlText);
-        const bounds = collectBounds(result.geojson);
-        if (!bounds) throw new Error('مختصات جغرافیایی معتبر در فایل پیدا نشد.');
-        if (!mapReady) await new Promise(resolve => map.once('load', resolve));
-
-        currentGeoJson = result.geojson;
-        currentBounds = bounds;
-        currentFile = file;
-        addKmzToMap(currentGeoJson);
-
-        elements.fileName.textContent = file.name;
-        elements.fileSize.textContent = `${formatBytes(file.size)} · ${toPersianDigits(result.geojson.features.length)} عارضه`;
-        elements.pointCount.textContent = toPersianDigits(result.counts.points);
-        elements.lineCount.textContent = toPersianDigits(result.counts.lines);
-        elements.polygonCount.textContent = toPersianDigits(result.counts.polygons);
-        elements.fileCard.classList.add('show');
-        elements.kmzVisibility.disabled = false;
-        elements.kmzVisibility.checked = true;
-        elements.kmzLayerStatus.textContent = 'فعال';
-        elements.fitButton.disabled = false;
-        elements.removeButton.disabled = false;
-        fitKmzBounds();
-        setStatus(`فایل با موفقیت پردازش شد. فایل KML انتخاب‌شده: ${kmlEntries[0].name}`, 'success');
-      } catch (error) {
-        console.error('KMZ processing error:', error);
-        setStatus(error instanceof Error ? error.message : 'پردازش فایل KMZ ناموفق بود.', 'error');
       } finally {
+        kmzUploadInProgress = false;
         setBusy(false);
         elements.fileInput.value = '';
       }
-    }
 
-    function fitKmzBounds() {
-      if (!currentBounds || !mapReady) return;
-      const sw = currentBounds.getSouthWest();
-      const ne = currentBounds.getNorthEast();
-      if (Math.abs(sw.lng - ne.lng) < 1e-10 && Math.abs(sw.lat - ne.lat) < 1e-10) {
-        map.flyTo({ center: [sw.lng, sw.lat], zoom: 15, duration: 900 });
-      } else {
-        map.fitBounds(currentBounds, { padding: 55, maxZoom: 16, duration: 900 });
+      if (loadedCount > 0 && failures.length === 0 && skippedCount === 0) {
+        setStatus(`${toPersianDigits(loadedCount)} فایل KMZ با موفقیت بارگذاری و روی نقشه نمایش داده شد.`, 'success');
+      } else if (loadedCount > 0) {
+        const messages = failures.slice(0, 2).join(' | ');
+        const skippedMessage = skippedCount ? ` تعداد ${toPersianDigits(skippedCount)} فایل به‌دلیل پر بودن دو جایگاه نادیده گرفته شد.` : '';
+        setStatus(`تعداد ${toPersianDigits(loadedCount)} فایل بارگذاری شد.${messages ? ` خطا: ${messages}` : ''}${skippedMessage}`, 'warning');
+      } else if (failures.length > 0) {
+        setStatus(failures.slice(0, 2).join(' | '), 'error');
       }
     }
 
-    function clearKmzLayer() {
-      removeKmzFromMap();
-      currentGeoJson = null;
-      currentBounds = null;
-      currentFile = null;
-      elements.fileCard.classList.remove('show');
-      elements.kmzVisibility.checked = true;
-      elements.kmzVisibility.disabled = true;
-      elements.kmzLayerStatus.textContent = 'غیرفعال';
-      elements.fitButton.disabled = true;
-      elements.removeButton.disabled = true;
-      elements.pointCount.textContent = '۰';
-      elements.lineCount.textContent = '۰';
-      elements.polygonCount.textContent = '۰';
-      setStatus('لایهٔ KMZ از نقشه حذف شد.', 'info');
+    function createKmzFileCard(record) {
+      const card = document.createElement('div');
+      card.className = 'file-card show kmz-file-card';
+
+      const top = document.createElement('div');
+      top.className = 'kmz-card-top';
+
+      const badge = document.createElement('div');
+      badge.className = 'file-badge';
+      badge.textContent = 'KMZ';
+      badge.style.border = `2px solid ${kmzStyles[record.slotId].line}`;
+
+      const meta = document.createElement('div');
+      meta.className = 'file-meta';
+      const slotName = document.createElement('div');
+      slotName.className = 'kmz-slot-name';
+      slotName.textContent = `لایهٔ ${record.slotId === 1 ? 'اول' : 'دوم'}`;
+      const name = document.createElement('div');
+      name.className = 'file-name';
+      name.textContent = record.fileName;
+      const size = document.createElement('div');
+      size.className = 'file-size';
+      size.textContent = `${formatBytes(record.fileSize)} · ${toPersianDigits(record.featureCount)} عارضه`;
+      meta.append(slotName, name, size);
+
+      const visibilityLabel = document.createElement('label');
+      visibilityLabel.className = 'kmz-visibility-label';
+      const visibility = document.createElement('input');
+      visibility.type = 'checkbox';
+      visibility.checked = record.visible;
+      visibility.setAttribute('aria-label', `نمایش لایهٔ ${record.fileName}`);
+      visibility.addEventListener('change', () => {
+        record.visible = visibility.checked;
+        const value = visibility.checked ? 'visible' : 'none';
+        for (const layerId of getKmzLayerIds(record.slotId)) {
+          if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', value);
+        }
+        state.textContent = visibility.checked ? 'نمایش' : 'مخفی';
+      });
+      const state = document.createElement('span');
+      state.textContent = record.visible ? 'نمایش' : 'مخفی';
+      visibilityLabel.append(visibility, state);
+      top.append(badge, meta, visibilityLabel);
+
+      const stats = document.createElement('div');
+      stats.className = 'stats-grid';
+      stats.setAttribute('aria-label', `آمار عوارض ${record.fileName}`);
+      const statItems = [
+        ['points', 'نقطه'],
+        ['lines', 'خط'],
+        ['polygons', 'پلیگون']
+      ];
+      for (const [key, label] of statItems) {
+        const box = document.createElement('div');
+        box.className = 'stat-box';
+        const value = document.createElement('span');
+        value.className = 'stat-value';
+        value.textContent = toPersianDigits(record.counts[key]);
+        const caption = document.createElement('span');
+        caption.className = 'stat-label';
+        caption.textContent = label;
+        box.append(value, caption);
+        stats.appendChild(box);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'file-actions';
+      const fitButton = document.createElement('button');
+      fitButton.type = 'button';
+      fitButton.className = 'btn btn-primary';
+      fitButton.textContent = '⌖ نمایش محدوده';
+      fitButton.addEventListener('click', () => fitKmzBounds(record.slotId));
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'btn btn-light';
+      removeButton.textContent = 'حذف این فایل';
+      removeButton.addEventListener('click', () => clearKmzLayer(record.slotId));
+      actions.append(fitButton, removeButton);
+
+      card.append(top, stats, actions);
+      return card;
     }
 
-    elements.fileInput.addEventListener('change', event => loadKmzFile(event.target.files?.[0]));
+    function renderKmzFileCards() {
+      elements.kmzFilesContainer.replaceChildren();
+      for (const slotId of KMZ_SLOT_IDS) {
+        const record = kmzFiles.get(slotId);
+        if (record) elements.kmzFilesContainer.appendChild(createKmzFileCard(record));
+      }
+      if (kmzFiles.size === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'kmz-empty-state';
+        empty.textContent = 'هنوز فایلی بارگذاری نشده است.';
+        elements.kmzFilesContainer.appendChild(empty);
+      }
+      elements.kmzGlobalActions.hidden = kmzFiles.size < 2;
+      elements.fitAllKmzButton.disabled = kmzFiles.size < 2;
+    }
+
+    function fitBounds(bounds) {
+      if (!bounds || !mapReady) return;
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      if (Math.abs(sw.lng - ne.lng) < 1e-10 && Math.abs(sw.lat - ne.lat) < 1e-10) {
+        map.flyTo({ center: [sw.lng, sw.lat], zoom: 15, duration: 900 });
+      } else {
+        map.fitBounds(bounds, { padding: 55, maxZoom: 16, duration: 900 });
+      }
+    }
+
+    function fitKmzBounds(slotId) {
+      fitBounds(kmzFiles.get(slotId)?.bounds || null);
+    }
+
+    function fitAllKmzBounds() {
+      if (kmzFiles.size === 0 || !mapReady) return;
+      const combinedBounds = new maplibregl.LngLatBounds();
+      for (const record of kmzFiles.values()) {
+        combinedBounds.extend(record.bounds.getSouthWest());
+        combinedBounds.extend(record.bounds.getNorthEast());
+      }
+      fitBounds(combinedBounds);
+    }
+
+    function clearKmzLayer(slotId) {
+      const record = kmzFiles.get(slotId);
+      if (!record) return;
+      removeKmzFromMap(slotId);
+      kmzFiles.delete(slotId);
+      renderKmzFileCards();
+      setStatus(`فایل «${record.fileName}» از نقشه حذف شد.`, 'info');
+    }
+
+    elements.fileInput.addEventListener('change', event => handleKmzFiles(event.target.files));
     elements.dropZone.addEventListener('dragover', event => {
       event.preventDefault();
       elements.dropZone.classList.add('drag-over');
@@ -1629,16 +1788,10 @@
     elements.dropZone.addEventListener('drop', event => {
       event.preventDefault();
       elements.dropZone.classList.remove('drag-over');
-      loadKmzFile(event.dataTransfer?.files?.[0]);
+      handleKmzFiles(event.dataTransfer?.files);
     });
 
-    elements.kmzVisibility.addEventListener('change', () => {
-      const visibility = elements.kmzVisibility.checked ? 'visible' : 'none';
-      for (const layerId of kmzLayerIds) if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', visibility);
-      elements.kmzLayerStatus.textContent = elements.kmzVisibility.checked ? 'فعال' : 'مخفی';
-    });
-    elements.fitButton.addEventListener('click', fitKmzBounds);
-    elements.removeButton.addEventListener('click', clearKmzLayer);
+    elements.fitAllKmzButton.addEventListener('click', fitAllKmzBounds);
     elements.worldButton.addEventListener('click', () => map.flyTo({ center: [0, 20], zoom: 2, duration: 700 }));
     elements.homeButton.addEventListener('click', () => map.flyTo({ center: [0, 20], zoom: 2, bearing: 0, pitch: 0, duration: 700 }));
 
